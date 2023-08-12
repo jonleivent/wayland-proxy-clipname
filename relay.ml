@@ -10,6 +10,42 @@ open Wayland
 
 open Eio.Std
 
+(* The following clipboard name hack works by prefixing mime_types with a
+   string representing the name of a clipboard.  The clipname_to_host function
+   adds the prefix, and is used when communicating to the host.  The
+   clipname_to_clients function removes the prefix if it matches the one for
+   this proxy, and is used whem communicating with the clients.  If the prefix
+   does not match, clipname_to_clients is a noop - and so prevents data offers
+   without the matching prefix from reaching clients.
+
+   Clients of this proxy will not see the prefix on the mime_type, but clients
+   directly of the host will.  This enables a clipboard manager client of the
+   host to direct clipboard contents (and dnd, and primary selections) between
+   differently named clipboards.
+
+   The clipboard name defaults to #PID<pid of the proxy>#, but can be set
+   using either the --clipname command-line arg or WAYLAND_PROXY_CLIPBOARD
+   (the clipname_envvar in Config) environment variable, with --clipname
+   taking priority.  Also, it is possible to set either --clipname or the
+   environment variable to "" to override the behavior entirely (the prefix is
+   the empty string, hence no prefix). *)
+let lclipname =
+  (* lazy so that it isn't evaled before the Unix.putenv in config.ml *)
+  lazy (try Unix.getenv Config.clipname_envvar
+        (* use #PID<proxy's pid># as default so that not setting the env var
+           is not a security issue: *)
+        with Not_found ->
+          Printf.sprintf "#PID%d#" (Unix.getpid ()))
+let clipname_to_host f ~mime_type =
+  let clipname = Lazy.force lclipname in
+  f ~mime_type:(clipname ^ mime_type)
+let clipname_to_clients f ~mime_type =
+  let prefix = Lazy.force lclipname in
+  if String.starts_with ~prefix mime_type then
+    let lp = String.length prefix in
+    let l = (String.length mime_type) - lp in
+    f ~mime_type:(String.sub mime_type lp l)
+
 (* Since we're just relaying messages, we mostly don't care about checking version compatibility.
    e.g. if a client sends us a v5 message, then we can assume the corresponding server object
    supports v5 too (otherwise the client shouldn't have sent it).
@@ -948,7 +984,7 @@ let make_data_offer ~client_offer h =
         Proxy.delete h
       method on_finish _ = H.Wl_data_offer.finish h
       method on_receive _ ~mime_type ~fd =
-        H.Wl_data_offer.receive h ~mime_type ~fd;
+        clipname_to_host (H.Wl_data_offer.receive h ~fd) ~mime_type;
         Unix.close fd
       method on_set_actions _ = H.Wl_data_offer.set_actions h
     end in
@@ -957,7 +993,7 @@ let make_data_offer ~client_offer h =
     inherit [_] H.Wl_data_offer.v1
     method! user_data = user_data
     method on_action _ = C.Wl_data_offer.action c
-    method on_offer _ = C.Wl_data_offer.offer c
+    method on_offer _ = clipname_to_clients (C.Wl_data_offer.offer c)
     method on_source_actions _ = C.Wl_data_offer.source_actions c
   end
 
@@ -971,7 +1007,7 @@ let make_data_source ~host_source c =
       method on_dnd_drop_performed _ = C.Wl_data_source.dnd_drop_performed c
       method on_dnd_finished _ = C.Wl_data_source.dnd_finished c
       method on_send _ ~mime_type ~fd =
-        C.Wl_data_source.send c ~mime_type ~fd;
+        clipname_to_clients (C.Wl_data_source.send c ~fd) ~mime_type;
         Unix.close fd
       method on_target _ = C.Wl_data_source.target c
     end in
@@ -980,7 +1016,7 @@ let make_data_source ~host_source c =
     inherit [_] C.Wl_data_source.v1
     method! user_data = user_data
     method on_destroy = delete_with H.Wl_data_source.destroy h
-    method on_offer _ = H.Wl_data_source.offer h
+    method on_offer _ = clipname_to_host (H.Wl_data_source.offer h)
     method on_set_actions _ = H.Wl_data_source.set_actions h
   end
 
@@ -1038,14 +1074,14 @@ module Gtk_primary = struct
           Proxy.delete h
 
         method on_receive _ ~mime_type ~fd =
-          H.Zwp_primary_selection_offer_v1.receive h ~mime_type ~fd;
+          clipname_to_host (H.Zwp_primary_selection_offer_v1.receive h ~fd) ~mime_type;
           Unix.close fd
       end in
     let user_data = host_data (HD.Gtk_data_offer c) in
     Proxy.Handler.attach h @@ object
       inherit [_] H.Zwp_primary_selection_offer_v1.v1
       method! user_data = user_data
-      method on_offer _ = C.Gtk_primary_selection_offer.offer c
+      method on_offer _ = clipname_to_clients (C.Gtk_primary_selection_offer.offer c)
     end
 
   let make_gtk_primary_selection_source ~host_source c =
@@ -1054,7 +1090,7 @@ module Gtk_primary = struct
         inherit [_] H.Zwp_primary_selection_source_v1.v1
         method on_cancelled _ = C.Gtk_primary_selection_source.cancelled c
         method on_send _ ~mime_type ~fd =
-          C.Gtk_primary_selection_source.send c ~mime_type ~fd;
+          clipname_to_clients (C.Gtk_primary_selection_source.send c ~fd) ~mime_type;
           Unix.close fd
       end in
     let user_data = client_data (Gtk_source h) in
@@ -1062,7 +1098,7 @@ module Gtk_primary = struct
       inherit [_] C.Gtk_primary_selection_source.v1
       method! user_data = user_data
       method on_destroy = delete_with H.Zwp_primary_selection_source_v1.destroy h
-      method on_offer _ = H.Zwp_primary_selection_source_v1.offer h
+      method on_offer _ = clipname_to_host (H.Zwp_primary_selection_source_v1.offer h)
     end
 
   let make_gtk_primary_selection_device ~host_device c =
@@ -1119,14 +1155,14 @@ module Zwp_primary = struct
           Proxy.delete h
 
         method on_receive _ ~mime_type ~fd =
-          H.Zwp_primary_selection_offer_v1.receive h ~mime_type ~fd;
+          clipname_to_host (H.Zwp_primary_selection_offer_v1.receive h ~fd) ~mime_type;
           Unix.close fd
       end in
     let user_data = host_data (HD.Zwp_data_offer c) in
     Proxy.Handler.attach h @@ object
       inherit [_] H.Zwp_primary_selection_offer_v1.v1
       method! user_data = user_data
-      method on_offer _ = C.Zwp_primary_selection_offer_v1.offer c
+      method on_offer _ = clipname_to_clients (C.Zwp_primary_selection_offer_v1.offer c)
     end
 
   let make_primary_selection_source ~host_source c =
@@ -1135,7 +1171,7 @@ module Zwp_primary = struct
         inherit [_] H.Zwp_primary_selection_source_v1.v1
         method on_cancelled _ = C.Zwp_primary_selection_source_v1.cancelled c
         method on_send _ ~mime_type ~fd =
-          C.Zwp_primary_selection_source_v1.send c ~mime_type ~fd;
+          clipname_to_clients (C.Zwp_primary_selection_source_v1.send c ~fd) ~mime_type;
           Unix.close fd
       end in
     let user_data = client_data (Zwp_source h) in
@@ -1143,7 +1179,7 @@ module Zwp_primary = struct
       inherit [_] C.Zwp_primary_selection_source_v1.v1
       method! user_data = user_data
       method on_destroy = delete_with H.Zwp_primary_selection_source_v1.destroy h
-      method on_offer _ = H.Zwp_primary_selection_source_v1.offer h
+      method on_offer _ = clipname_to_host (H.Zwp_primary_selection_source_v1.offer h)
     end
 
   let make_primary_selection_device ~host_device c =

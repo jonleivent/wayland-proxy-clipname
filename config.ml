@@ -7,6 +7,15 @@ type t = {
 
 open Cmdliner
 
+let clipname_envvar = "WAYLAND_PROXY_CLIPNAME"
+
+let clipname =
+  Arg.value @@
+  Arg.(opt (some string)) None @@
+  Arg.info
+    ~doc:(Printf.sprintf "Clipboard name to use (to override %s)" clipname_envvar)
+    ["clipname"]
+
 let tag =
   Arg.value @@
   Arg.(opt string) "" @@
@@ -35,8 +44,9 @@ let xunscale =
     ~doc:"Compensate for Wayland's attempts to scale X11 apps (e.g. 2 for a HiDPI display)"
     ["x-unscale"]
 
-let make_config tag xwayland_binary xrdb xunscale =
+let make_config clipname tag xwayland_binary xrdb xunscale =
+  Option.iter (Unix.putenv clipname_envvar) clipname;
   { tag; xwayland_binary; xrdb; xunscale }
 
 let cmdliner =
-  Term.(const make_config $ tag $ xwayland_binary $ xrdb $ xunscale)
+  Term.(const make_config $ clipname $ tag $ xwayland_binary $ xrdb $ xunscale)

@@ -131,7 +131,7 @@ let () =
   let fs = fst env#fs in
   Switch.run @@ fun sw ->
   let virtwl_proxy =
-    let info = Cmd.info "wayland-proxy-virtwl" in
+    let info = Cmd.info Sys.argv.(0) in
     Cmd.v info Term.(ret (const (main ~env) $ Trace.cmdliner ~sw ~fs $ virtio_gpu $ wayland_display $ x_display $ Config.cmdliner $ args))
   in
   exit @@ Cmd.eval virtwl_proxy
