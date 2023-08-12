@@ -1,16 +1,24 @@
 `wayland-proxy-clipname` is like its parent `wayland-proxy-virtwl`, with the additional
 ability to provide named clipboards for sandboxes.  The name of a clipboard is given by
-the command line argument --clipname or with the WAYLAND_PROXY_CLIPNAME environment
+the command line argument --clipname or with the `WAYLAND_PROXY_CLIPNAME` environment
 variable, with the command line taking precedence.  If neither is used, the name will
-default to `#PID<pid of proxy process>#`.  If the empty string is used, which implies it
+default to `#PID<pid of proxy process>#`.  If the empty string is used, that implies it
 is the 'global' clipboard: the same clipboard seen outside the proxy.  Clients attached to
 a proxy can only read and write to their proxy's named clipboard.  Any clipboard can be
 read or written to from the global clipboard by prefixing the mime-type with the
 clipboard's name.
 
-Note that this development is on the `Eio` branch only.
+Unlike `wayland-proxy-virtwl`, the expected usage has the proxy being trusted and launched
+outside a container, with the socket it provides mapped into a container, while the
+host socket is not made visible in the container.  This doesn't preclude using it both outside
+(to create a named clipboard secure from clients) and inside (to use with `virtio-gpu`) a VM.
+However, my personal use case is with sandbox containers, such as those configured using
+[bubblewrap](https://github.com/containers/bubblewrap).
 
-Otherwise, `wayland-proxy-virtwl`'s README applies, with `clipname` substituted for `virtwl`:
+Note that this development is on the `Eio` branch only.  XWayland clients have not been tested
+yet.
+
+Otherwise, `wayland-proxy-virtwl`'s README mostly applies, with `clipname` substituted for `virtwl`:
 
 `wayland-proxy-virtwl`'s README:
 
