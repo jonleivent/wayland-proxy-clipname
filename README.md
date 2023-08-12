@@ -1,3 +1,19 @@
+`wayland-proxy-clipname` is like its parent `wayland-proxy-virtwl`, with the additional
+ability to provide named clipboards for sandboxes.  The name of a clipboard is given by
+the command line argument --clipname or with the WAYLAND_PROXY_CLIPNAME environment
+variable, with the command line taking precedence.  If neither is used, the name will
+default to `#PID<pid of proxy process>#`.  If the empty string is used, which implies it
+is the 'global' clipboard: the same clipboard seen outside the proxy.  Clients attached to
+a proxy can only read and write to their proxy's named clipboard.  Any clipboard can be
+read or written to from the global clipboard by prefixing the mime-type with the
+clipboard's name.
+
+Note that this development is on the `Eio` branch only.
+
+Otherwise, `wayland-proxy-virtwl`'s README applies, with `clipname` substituted for `virtwl`:
+
+`wayland-proxy-virtwl`'s README:
+
 # A Wayland proxy
 
 `wayland-proxy-virtwl` accepts Wayland connections from client applications and proxies the messages to a host compositor.

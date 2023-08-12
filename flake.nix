@@ -21,7 +21,7 @@
           };
       in
       {
-        packages.default = selection.wayland-proxy-virtwl;
+        packages.default = selection.wayland-proxy-clipname;
       }
     );
 }

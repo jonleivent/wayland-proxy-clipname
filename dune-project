@@ -1,13 +1,13 @@
 (lang dune 3.7)
-(name wayland-proxy-virtwl)
+(name wayland-proxy-clipname)
 (formatting disabled)
 (generate_opam_files true)
-(source (github talex5/wayland-proxy-virtwl))
+(source (github jonleivent/wayland-proxy-clipname))
 (authors "talex5@gmail.com")
-(maintainers "talex5@gmail.com")
+(maintainers "jonleivent@comcast.net")
 (package
- (name wayland-proxy-virtwl)
- (synopsis "Proxy Wayland connections across the VM boundary")
+ (name wayland-proxy-clipname)
+ (synopsis "Wayland proxy providing named clipboards for sandboxes")
  (depends
    (logs (>= 0.7.0))
    (cmdliner (>= 1.1.0))

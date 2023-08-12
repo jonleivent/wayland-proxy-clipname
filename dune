@@ -1,6 +1,6 @@
 (executable
   (name main)
-  (public_name wayland-proxy-virtwl)
+  (public_name wayland-proxy-clipname)
   (preprocess (pps ppx_cstruct))
   (libraries wayland wayland.protocols virtio_gpu cmdliner fmt x11 eio_main))
 
