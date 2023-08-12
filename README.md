@@ -18,6 +18,9 @@ However, my personal use case is with sandbox containers, such as those configur
 Note that this development is on the `Eio` branch only.  XWayland clients have not been tested
 yet.
 
+This is a very preliminary WIP (work in progress), so no issues/discussions/etc. yet.
+
+
 Otherwise, `wayland-proxy-virtwl`'s README mostly applies, with `clipname` substituted for `virtwl`:
 
 `wayland-proxy-virtwl`'s README:
