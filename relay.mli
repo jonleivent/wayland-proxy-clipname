@@ -41,6 +41,11 @@ type xwayland_hooks = <
   (** The buffer scale to set and then use to transform coordinates (for HiDPI screens). *)
 >
 
+val clipname_to_host : (mime_type:string -> 'a) -> mime_type:string -> 'a
+(** [clipname_to_host mime_type f] adds the clipboard name prefix when talking to the host *)
+val clipname_to_clients : (mime_type:string -> unit) -> mime_type:string -> unit
+(** [clipname_to_clients mime_type f] removes the clipboard name prefix when talking to the clients *)
+
 val run : ?xwayland:xwayland_hooks -> config:Config.t -> Host.t -> _ Eio_unix.Net.stream_socket -> unit
 (** [accept ~config host client] talks the Wayland protocol to [client], relaying messages to [host]. *)
 

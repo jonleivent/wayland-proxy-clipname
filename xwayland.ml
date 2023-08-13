@@ -167,7 +167,8 @@ module Selection = struct
         Proxy.Handler.attach offer @@ object
           inherit [_] Primary_offer.v1
           method! user_data = Offer mime_types
-          method on_offer _ ~mime_type = mime_types := mime_type :: !mime_types
+          method on_offer _ ~mime_type =
+            Relay.clipname_to_clients (fun ~mime_type -> mime_types := mime_type :: !mime_types) ~mime_type
         end
     end
 
@@ -189,7 +190,8 @@ module Selection = struct
         Proxy.Handler.attach offer @@ object
           inherit [_] Clipboard_offer.v1
           method! user_data = Offer mime_types
-          method on_offer _ ~mime_type = mime_types := mime_type :: !mime_types
+          method on_offer _ ~mime_type =
+            Relay.clipname_to_clients (fun ~mime_type -> mime_types := mime_type :: !mime_types) ~mime_type
           method on_source_actions _ ~source_actions:_ = ()
           method on_action _ ~dnd_action:_ = ()
         end
@@ -211,11 +213,13 @@ module Selection = struct
       Return the MIME type and X11 target to use.
       For example, if xterm asks for target TEXT then we might reply with (text/plain, UTF8_STRING). *)
   let mime_type_of_target ~targets target =
+    Log.warn (fun f -> f "mem_type_of_target 218 target is %s" target);
     if List.mem target targets then target, target
     else if target = "TEXT" || target = "UTF8_STRING" then (
       if List.mem "UTF8_STRING" targets then "UTF8_STRING", "UTF8_STRING"
       else (
         List.find_map (fun mime_type ->
+            Log.warn (fun f -> f "mem_type_of_target 224 targets has %s" mime_type);
             match mime_type with
             | "text/plain" -> Some (mime_type, "UTF8_STRING")
             | x when String.starts_with ~prefix:"text/plain;" x -> Some (mime_type, "UTF8_STRING")
@@ -369,8 +373,10 @@ module Selection = struct
           inherit [_] Primary_source.v1
 
           method on_send _ ~mime_type ~fd =
-            Log.info (fun f -> f "Sending X PRIMARY selection to Wayland (%S)" mime_type);
-            send_x_selection t primary ~via:requestor ~mime_type ~dst:fd
+            Relay.clipname_to_host
+              (fun ~mime_type ->
+                Log.info (fun f -> f "Sending X PRIMARY selection to Wayland (%S)" mime_type);
+                send_x_selection t primary ~via:requestor ~mime_type ~dst:fd) ~mime_type
 
           method on_cancelled self =
             Log.info (fun f -> f "X selection source cancelled by Wayland - X app no longer owns selection");
@@ -380,7 +386,8 @@ module Selection = struct
             Primary_source.destroy self
         end
       in
-      targets |> List.iter (fun mime_type -> Primary_source.offer source ~mime_type);
+      targets |> List.iter (fun mime_type ->
+                     Relay.clipname_to_host (Primary_source.offer source) ~mime_type);
       Primary_device.set_selection primary_device ~source:(Some source) ~serial:(Host.last_serial t.host)
 
   (* Similar to {!set_x_owned_primary}, but for Wayland's clipboard API. *)
@@ -405,8 +412,10 @@ module Selection = struct
         inherit [_] Clipboard_source.v1
 
         method on_send _ ~mime_type ~fd =
-          Log.info (fun f -> f "Sending X CLIPBOARD selection to Wayland (%S)" mime_type);
-          send_x_selection t clipboard ~via:requestor ~mime_type ~dst:fd
+          Relay.clipname_to_host
+            (fun ~mime_type ->
+              Log.info (fun f -> f "Sending X CLIPBOARD selection to Wayland (%S)" mime_type);
+              send_x_selection t clipboard ~via:requestor ~mime_type ~dst:fd) ~mime_type
 
         method on_cancelled self =
           Log.info (fun f -> f "X selection source cancelled by Wayland - X app no longer owns clipboard");
@@ -422,7 +431,8 @@ module Selection = struct
         method on_action _ ~dnd_action:_ = ()
       end
     in
-    targets |> List.iter (fun mime_type -> Clipboard_source.offer source ~mime_type);
+    targets |> List.iter (fun mime_type ->
+                   Relay.clipname_to_host (Clipboard_source.offer source) ~mime_type);
     Clipboard_device.set_selection t.clipboard_device ~source:(Some source) ~serial:(Host.last_serial t.host)
 
   (* Handle a SelectionClear event from Xwayland. *)
