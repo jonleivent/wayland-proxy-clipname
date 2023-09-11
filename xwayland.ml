@@ -8,6 +8,7 @@ module Log = Log.Xwayland
 
 module Proxy = Wayland.Proxy
 module Wl_seat = Wayland.Wayland_client.Wl_seat
+module Wl_surface = Wayland.Wayland_client.Wl_surface
 module Xdg_wm_base = Wayland_protocols.Xdg_shell_client.Xdg_wm_base
 module Xdg_surface = Wayland_protocols.Xdg_shell_client.Xdg_surface
 module Xdg_toplevel = Wayland_protocols.Xdg_shell_client.Xdg_toplevel
@@ -15,6 +16,10 @@ module Xdg_popup = Wayland_protocols.Xdg_shell_client.Xdg_popup
 module Xdg_positioner = Wayland_protocols.Xdg_shell_client.Xdg_positioner
 module Xdg_decor_mgr = Wayland_protocols.Xdg_decoration_unstable_v1_client.Zxdg_decoration_manager_v1
 module Xdg_decoration = Wayland_protocols.Xdg_decoration_unstable_v1_client.Zxdg_toplevel_decoration_v1
+
+let or_log label = function
+  | Ok () -> ()
+  | Error x11 -> Log.warn (fun f -> f "%s: configure failed: %a" label X11.Error.pp_code x11)
 
 type host_surface = [`V1 | `V2 | `V3 | `V4 | `V5] Wayland.Wayland_client.Wl_surface.t
 type client_surface = [`V1 | `V2 | `V3 | `V4 | `V5] Wayland.Wayland_server.Wl_surface.t
@@ -35,6 +40,7 @@ type unpaired = {
 
 type paired = {
   window : X11.Window.t;
+  unmap : unit -> unit;
   xdg_surface : [`V1] Xdg_surface.t;
   mutable xdg_role : [
     | `Toplevel of [`V1] Xdg_toplevel.t
@@ -52,7 +58,7 @@ let paired_of_surface s =
   | X11 x -> Some x
   | _ -> None
 
-let pp_paired f { window; xdg_surface; xdg_role; geometry; override_redirect } =
+let pp_paired f { window; unmap = _; xdg_surface; xdg_role; geometry; override_redirect } =
   Fmt.pf f "%a@%a/%t=%a%s"
     Proxy.pp xdg_surface
     X11.Geometry.pp geometry
@@ -578,7 +584,8 @@ let init_toplevel t ~x11 ~xdg_surface ~info ~paired window =
           Fiber.fork ~sw:t.sw (fun () ->
               let (width, height) = scale_to_client t (width, height) in
               (paired:paired).geometry <- { paired.geometry with width; height };
-              X11.Window.configure x11 window ~width ~height ~border_width:0
+              X11.Window.configure_checked x11 window ~width ~height ~border_width:0
+              |> or_log "on_configure"
             )
         )
 
@@ -645,7 +652,8 @@ let init_popup t ~x11 ~xdg_surface ~info ~parent ~paired window =
           let (width, height) = scale_to_client t (width, height) in
           Fiber.fork ~sw:t.sw (fun () ->
               (paired:paired).geometry <- { paired.geometry with width; height };
-              X11.Window.configure x11 window ~width ~height ~border_width:0
+              X11.Window.configure_checked x11 window ~width ~height ~border_width:0
+              |> or_log "on_configure(popup)"
             )
         )
       method on_popup_done _ = ()               (* todo: maybe notify the X application about this? *)
@@ -682,8 +690,15 @@ let pair t ~set_configured ~host_surface window =
               | _ -> `Show
             )
         end in
+      let unmap () =
+        if Wayland.Proxy.can_send host_surface then (
+          Wl_surface.attach host_surface ~buffer:None ~x:0l ~y:0l;
+          Wl_surface.commit host_surface
+        )
+      in
       let paired = {
         window;
+        unmap;
         xdg_surface;
         geometry = info.geometry;
         xdg_role = `None;
@@ -932,13 +947,19 @@ let listen_x11 ~selection t =
       X11.Window.configure x11 window ~stack_mode:`Below;
       X11.Window.map x11 window
 
+    method unmap_notify ~window =
+      Hashtbl.find_opt t.paired window |> Option.iter (fun p -> p.unmap ())
+
     method configure_request ~window ~width ~height =
       match Hashtbl.find_opt t.paired window with
       | None ->
         (* In theory, we must ensure the size is a multiple of the scale factor, as the Wayland spec requires this.
            However, this makes some windows look ugly, and Sway seems to allow any size. *)
         (* let (width, height) = scale_to_host t (width, height) |> scale_to_client t in *)
-        X11.Window.configure x11 window ~width ~height ~border_width:0
+        Fiber.fork ~sw:t.sw (fun () ->
+          X11.Window.configure_checked x11 window ~width ~height ~border_width:0
+          |> or_log "configure_request"
+        )
         (* todo: send a synthetic ConfigureNotify event if nothing changed *)
       | Some p ->
         (* For now, don't allow apps to change their own size once mapped. *)
