@@ -1,3 +1,7 @@
+This project has been deprecated in favor of: https://gitlab.freedesktop.org/jonleivent/waydapt
+
+
+
 `wayland-proxy-clipname` is like its parent `wayland-proxy-virtwl`, with the additional
 ability to provide named clipboards for sandboxes.  The name of a clipboard is given by
 the command line argument --clipname or with the `WAYLAND_PROXY_CLIPNAME` environment
